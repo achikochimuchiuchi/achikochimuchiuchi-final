@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "InactionRecord": {
+      "title": "Inaction Record",
+      "description": "A record of administrative inaction or failure to act.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Title of the record" },
+        "date": { "type": "string", "format": "date", "description": "Date of the incident" },
+        "category": { "type": "string", "description": "Category of the incident" },
+        "description": { "type": "string", "description": "Detailed description of the incident" },
+        "status": { "type": "string", "enum": ["investigating", "archived", "resolved", "critical"], "description": "Current status of the record" },
+        "severity": { "type": "integer", "description": "Severity level (1-5)" },
+        "tags": { "type": "array", "items": { "type": "string" }, "description": "Tags associated with the record" },
+        "location": { "type": "string", "description": "Location of the incident" },
+        "evidenceCount": { "type": "integer", "description": "Number of evidence items linked" },
+        "authorUid": { "type": "string", "description": "UID of the user who created the record" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of record creation" }
+      },
+      "required": ["title", "date", "category", "description", "status", "severity", "authorUid", "createdAt"]
+    },
+    "MisconductRecord": {
+      "title": "Misconduct Record",
+      "description": "A record of administrative misconduct or corruption.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Title of the record" },
+        "date": { "type": "string", "format": "date", "description": "Date of the incident" },
+        "type": { "type": "string", "enum": ["corruption", "fraud", "cover-up", "harassment", "other"], "description": "Type of misconduct" },
+        "organization": { "type": "string", "description": "Organization involved" },
+        "description": { "type": "string", "description": "Detailed description of the incident" },
+        "status": { "type": "string", "enum": ["under-investigation", "disciplinary-action", "legal-action", "closed"], "description": "Current status of the record" },
+        "severity": { "type": "integer", "description": "Severity level (1-5)" },
+        "involvedParties": { "type": "array", "items": { "type": "string" }, "description": "Parties involved in the misconduct" },
+        "penalty": { "type": "string", "description": "Penalty or action taken" },
+        "authorUid": { "type": "string", "description": "UID of the user who created the record" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of record creation" }
+      },
+      "required": ["title", "date", "type", "organization", "description", "status", "severity", "authorUid", "createdAt"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Profile information for a user.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string", "description": "User's display name" },
+        "email": { "type": "string", "format": "email", "description": "User's email address" },
+        "role": { "type": "string", "enum": ["admin", "user"], "description": "User's role in the system" }
+      },
+      "required": ["displayName", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/inaction_records/{recordId}": {
+      "schema": "InactionRecord",
+      "description": "Collection of inaction records"
+    },
+    "/misconduct_records/{recordId}": {
+      "schema": "MisconductRecord",
+      "description": "Collection of misconduct records"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile data"
+    }
+  }
+}

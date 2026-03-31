@@ -1,0 +1,137 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: inaction_records
+    // Fields:
+    //   - title: string (required)
+    //   - date: string (required, date format)
+    //   - category: string (required)
+    //   - description: string (required)
+    //   - status: string (required, investigating|archived|resolved|critical)
+    //   - severity: int (required, 1-5)
+    //   - tags: list (optional)
+    //   - location: string (optional)
+    //   - evidenceCount: int (optional)
+    //   - authorUid: string (required, immutable)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: misconduct_records
+    // Fields:
+    //   - title: string (required)
+    //   - date: string (required, date format)
+    //   - type: string (required, corruption|fraud|cover-up|harassment|other)
+    //   - organization: string (required)
+    //   - description: string (required)
+    //   - status: string (required, under-investigation|disciplinary-action|legal-action|closed)
+    //   - severity: int (required, 1-5)
+    //   - involvedParties: list (required)
+    //   - penalty: string (optional)
+    //   - authorUid: string (required, immutable)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: users
+    // Fields:
+    //   - displayName: string (required)
+    //   - email: string (required, email format)
+    //   - role: string (required, admin|user)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "fuuraidoumail@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidInactionRecord(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.date is string &&
+             data.category is string &&
+             data.description is string && data.description.size() < 5000 &&
+             data.status in ['investigating', 'archived', 'resolved', 'critical'] &&
+             data.severity is int && data.severity >= 1 && data.severity <= 5 &&
+             data.authorUid == request.auth.uid;
+    }
+
+    function isValidMisconductRecord(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.date is string &&
+             data.type in ['corruption', 'fraud', 'cover-up', 'harassment', 'other'] &&
+             data.organization is string &&
+             data.description is string && data.description.size() < 5000 &&
+             data.status in ['under-investigation', 'disciplinary-action', 'legal-action', 'closed'] &&
+             data.severity is int && data.severity >= 1 && data.severity <= 5 &&
+             data.involvedParties is list &&
+             data.authorUid == request.auth.uid;
+    }
+
+    function isValidUser(data) {
+      return data.displayName is string && data.displayName.size() > 0 &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role in ['admin', 'user'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'user';
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /inaction_records/{recordId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidInactionRecord(request.resource.data);
+      allow update: if isAuthenticated() && isValidInactionRecord(request.resource.data) && 
+                    (request.auth.uid == resource.data.authorUid || isAdmin()) &&
+                    areImmutableFieldsUnchanged(['authorUid', 'createdAt']);
+      allow delete: if isAuthenticated() && (request.auth.uid == resource.data.authorUid || isAdmin());
+    }
+
+    match /misconduct_records/{recordId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidMisconductRecord(request.resource.data);
+      allow update: if isAuthenticated() && isValidMisconductRecord(request.resource.data) && 
+                    (request.auth.uid == resource.data.authorUid || isAdmin()) &&
+                    areImmutableFieldsUnchanged(['authorUid', 'createdAt']);
+      allow delete: if isAuthenticated() && (request.auth.uid == resource.data.authorUid || isAdmin());
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
