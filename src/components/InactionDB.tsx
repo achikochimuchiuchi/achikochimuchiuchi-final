@@ -23,13 +23,25 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { InactionRecord, RecordStatus, Severity } from '../types';
+import { InactionRecord, RecordStatus, Severity, MisconductSource } from '../types';
 import { auth, db, handleFirestoreError, OperationType, signInWithGoogle } from '../firebase';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { syncInactionNews } from '../services/inactionAiService';
+import { Globe, RefreshCw } from 'lucide-react';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+const SourceBadge = ({ source }: { source: MisconductSource }) => {
+  if (source === 'user') return null;
+  return (
+    <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[9px] font-bold uppercase tracking-wider">
+      <Globe size={10} />
+      AI COLLECTED
+    </span>
+  );
+};
 
 const StatusBadge = ({ status }: { status: RecordStatus }) => {
   const config = {
@@ -70,6 +82,7 @@ export const InactionDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmbed
   const [selectedRecord, setSelectedRecord] = useState<InactionRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [newRecord, setNewRecord] = useState({
     title: '',
     description: '',
@@ -80,11 +93,24 @@ export const InactionDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmbed
     date: new Date().toISOString().split('T')[0]
   });
 
+  const handleSyncAI = async () => {
+    setIsSyncing(true);
+    try {
+      const count = await syncInactionNews();
+      alert(`${count}件の新しい不作為事案を収集しました。`);
+    } catch (error) {
+      alert("AIニュースの収集に失敗しました。");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleAddRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await addDoc(collection(db, 'inaction_records'), {
         ...newRecord,
+        source: 'user',
         status: 'investigating',
         evidenceCount: 0,
         authorUid: auth.currentUser?.uid,
@@ -151,20 +177,32 @@ export const InactionDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmbed
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input 
             type="text"
-            placeholder="記録を検索..."
+            placeholder="不作為事案を検索..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-gray-50 border-none rounded-xl py-3 pl-12 pr-4 text-sm focus:ring-2 focus:ring-[#0a1a2f] transition-all outline-none"
           />
         </div>
 
-        <button 
-          onClick={() => auth.currentUser ? setIsAdding(true) : signInWithGoogle()}
-          className="bg-[#0a1a2f] text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-blue-900/10"
-        >
-          <Plus size={18} />
-          <span className="text-xs font-bold tracking-wider uppercase">New Entry</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleSyncAI}
+            disabled={isSyncing}
+            className="p-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-all disabled:opacity-50 flex items-center gap-2"
+            title="AI News Sync"
+          >
+            <RefreshCw size={18} className={cn(isSyncing && "animate-spin")} />
+            <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">AI Sync</span>
+          </button>
+          
+          <button 
+            onClick={() => auth.currentUser ? setIsAdding(true) : signInWithGoogle()}
+            className="bg-[#0a1a2f] text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-blue-900/10"
+          >
+            <Plus size={18} />
+            <span className="text-xs font-bold tracking-wider uppercase">New Entry</span>
+          </button>
+        </div>
       </header>
     )}
 
@@ -287,9 +325,20 @@ export const InactionDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmbed
                 <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Loading Records...</p>
               </div>
             ) : filteredRecords.length === 0 ? (
-              <div className="text-center py-40">
+              <div className="text-center py-40 bg-white rounded-3xl border border-dashed border-gray-200">
                 <AlertTriangle size={48} className="mx-auto text-gray-200 mb-4" />
-                <p className="text-gray-400 font-medium">該当する記録が見つかりませんでした。</p>
+                <h4 className="text-lg font-bold text-gray-900 mb-2">記録がまだありません</h4>
+                <p className="text-gray-400 text-sm mb-8 max-w-xs mx-auto">
+                  右上の「AI Sync」ボタンを押して最新の行政不作為事案を収集するか、新しい事案を報告してください。
+                </p>
+                <button 
+                  onClick={handleSyncAI}
+                  disabled={isSyncing}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-50"
+                >
+                  <RefreshCw size={16} className={cn(isSyncing && "animate-spin")} />
+                  今すぐAIで不作為事案を収集
+                </button>
               </div>
             ) : (
               <div className="grid gap-4">
@@ -306,6 +355,7 @@ export const InactionDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmbed
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex items-center gap-3">
                         <StatusBadge status={record.status} />
+                        <SourceBadge source={record.source} />
                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{record.date}</span>
                       </div>
                       <SeverityIndicator level={record.severity} />
@@ -341,7 +391,10 @@ export const InactionDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmbed
               className="w-[500px] bg-white border-l border-gray-100 shadow-2xl z-40 flex flex-col"
             >
               <div className="p-8 border-b border-gray-50 flex justify-between items-center">
-                <StatusBadge status={selectedRecord.status} />
+                <div className="flex items-center gap-3">
+                  <StatusBadge status={selectedRecord.status} />
+                  <SourceBadge source={selectedRecord.source} />
+                </div>
                 <button 
                   onClick={() => setSelectedRecord(null)}
                   className="p-2 hover:bg-gray-50 rounded-full transition-colors"

@@ -396,9 +396,20 @@ export const MisconductDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmb
                 <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Loading Records...</p>
               </div>
             ) : filteredRecords.length === 0 ? (
-              <div className="text-center py-40">
+              <div className="text-center py-40 bg-white rounded-3xl border border-dashed border-gray-200">
                 <AlertTriangle size={48} className="mx-auto text-gray-200 mb-4" />
-                <p className="text-gray-400 font-medium">該当する記録が見つかりませんでした。</p>
+                <h4 className="text-lg font-bold text-gray-900 mb-2">記録がまだありません</h4>
+                <p className="text-gray-400 text-sm mb-8 max-w-xs mx-auto">
+                  右上の「AI Sync」ボタンを押して最新の不祥事ニュースを収集するか、新しい事案を報告してください。
+                </p>
+                <button 
+                  onClick={handleSyncAI}
+                  disabled={isSyncing}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-50"
+                >
+                  <RefreshCw size={16} className={cn(isSyncing && "animate-spin")} />
+                  今すぐAIでニュースを収集
+                </button>
               </div>
             ) : (
               <div className="grid gap-4">

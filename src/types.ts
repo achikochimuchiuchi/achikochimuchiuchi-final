@@ -12,6 +12,7 @@ export interface InactionRecord {
   title: string;
   date: string;
   category: string;
+  source: MisconductSource;
   description: string;
   status: RecordStatus;
   severity: Severity;
