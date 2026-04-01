@@ -23,18 +23,23 @@ export interface InactionRecord {
 }
 
 export type MisconductType = 'corruption' | 'fraud' | 'cover-up' | 'harassment' | 'other';
+export type MisconductCategory = 'administrative' | 'public-servant';
+export type MisconductSource = 'user' | 'ai-collected';
 
 export interface MisconductRecord {
   id: string;
   title: string;
   date: string;
   type: MisconductType;
+  category: MisconductCategory;
+  source: MisconductSource;
   organization: string;
   description: string;
   status: 'under-investigation' | 'disciplinary-action' | 'legal-action' | 'closed';
   severity: Severity;
   involvedParties: string[];
   penalty?: string;
+  url?: string;
   authorUid: string;
   createdAt: any;
 }

@@ -21,9 +21,11 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { MisconductRecord, MisconductType, Severity } from '../types';
+import { MisconductRecord, MisconductType, Severity, MisconductCategory, MisconductSource } from '../types';
 import { auth, db, handleFirestoreError, OperationType, signInWithGoogle } from '../firebase';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, limit } from 'firebase/firestore';
+import { syncAINews } from '../services/aiNewsService';
+import { Globe, RefreshCw, ExternalLink } from 'lucide-react';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -41,6 +43,29 @@ const TypeBadge = ({ type }: { type: MisconductType }) => {
   return (
     <span className={cn("px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider", config.color)}>
       {config.label}
+    </span>
+  );
+};
+
+const CategoryBadge = ({ category }: { category: MisconductCategory }) => {
+  const config = {
+    administrative: { label: '行政組織', color: 'bg-blue-100 text-blue-700' },
+    'public-servant': { label: '公務員', color: 'bg-emerald-100 text-emerald-700' },
+  }[category];
+
+  return (
+    <span className={cn("px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider", config.color)}>
+      {config.label}
+    </span>
+  );
+};
+
+const SourceBadge = ({ source }: { source: MisconductSource }) => {
+  if (source === 'user') return null;
+  return (
+    <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[9px] font-bold uppercase tracking-wider">
+      <Globe size={10} />
+      AI COLLECTED
     </span>
   );
 };
@@ -68,21 +93,37 @@ export const MisconductDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmb
   const [selectedRecord, setSelectedRecord] = useState<MisconductRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'all' | 'ai'>('all');
   const [newRecord, setNewRecord] = useState({
     title: '',
     organization: '',
     description: '',
     type: 'corruption' as MisconductType,
+    category: 'administrative' as MisconductCategory,
     severity: 3 as Severity,
     involvedParties: [] as string[],
     date: new Date().toISOString().split('T')[0]
   });
+
+  const handleSyncAI = async () => {
+    setIsSyncing(true);
+    try {
+      const count = await syncAINews();
+      alert(`${count}件の新しい不祥事ニュースを収集しました。`);
+    } catch (error) {
+      alert("AIニュースの収集に失敗しました。");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleAddRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await addDoc(collection(db, 'misconduct_records'), {
         ...newRecord,
+        source: 'user',
         status: 'under-investigation',
         authorUid: auth.currentUser?.uid,
         createdAt: serverTimestamp(),
@@ -93,6 +134,7 @@ export const MisconductDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmb
         organization: '',
         description: '',
         type: 'corruption',
+        category: 'administrative',
         severity: 3,
         involvedParties: [],
         date: new Date().toISOString().split('T')[0]
@@ -119,12 +161,17 @@ export const MisconductDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmb
   }, []);
 
   const filteredRecords = useMemo(() => {
-    return records.filter(r => 
+    let base = records;
+    if (activeTab === 'ai') {
+      base = records.filter(r => r.source === 'ai-collected').slice(0, 10);
+    }
+    
+    return base.filter(r => 
       r.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
       r.organization.toLowerCase().includes(searchQuery.toLowerCase()) ||
       r.description.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [searchQuery, records]);
+  }, [searchQuery, records, activeTab]);
 
   return (
     <div className="min-h-screen bg-[#fcfcfc] flex flex-col">
@@ -155,13 +202,25 @@ export const MisconductDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmb
           />
         </div>
 
-        <button 
-          onClick={() => auth.currentUser ? setIsAdding(true) : signInWithGoogle()}
-          className="bg-red-950 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-red-900/10"
-        >
-          <Plus size={18} />
-          <span className="text-xs font-bold tracking-wider uppercase">Report Case</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleSyncAI}
+            disabled={isSyncing}
+            className="p-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-all disabled:opacity-50 flex items-center gap-2"
+            title="AI News Sync"
+          >
+            <RefreshCw size={18} className={cn(isSyncing && "animate-spin")} />
+            <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">AI Sync</span>
+          </button>
+          
+          <button 
+            onClick={() => auth.currentUser ? setIsAdding(true) : signInWithGoogle()}
+            className="bg-red-950 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-red-900/10"
+          >
+            <Plus size={18} />
+            <span className="text-xs font-bold tracking-wider uppercase">Report Case</span>
+          </button>
+        </div>
       </header>
     )}
 
@@ -216,6 +275,33 @@ export const MisconductDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmb
                         <option value="cover-up">隠蔽</option>
                         <option value="harassment">ハラスメント</option>
                         <option value="other">その他</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Category / 対象</label>
+                      <select 
+                        value={newRecord.category}
+                        onChange={e => setNewRecord({...newRecord, category: e.target.value as MisconductCategory})}
+                        className="w-full bg-gray-50 border-none rounded-xl py-3 px-4 text-sm focus:ring-2 focus:ring-red-900 outline-none appearance-none"
+                      >
+                        <option value="administrative">行政組織</option>
+                        <option value="public-servant">公務員</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Severity / 深刻度</label>
+                      <select 
+                        value={newRecord.severity}
+                        onChange={e => setNewRecord({...newRecord, severity: parseInt(e.target.value) as Severity})}
+                        className="w-full bg-gray-50 border-none rounded-xl py-3 px-4 text-sm focus:ring-2 focus:ring-red-900 outline-none appearance-none"
+                      >
+                        <option value="1">1 (低)</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5 (高)</option>
                       </select>
                     </div>
                     <div>
@@ -275,14 +361,31 @@ export const MisconductDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmb
         {/* Main List */}
         <div className="flex-1 overflow-y-auto p-8 lg:p-12">
           <div className="max-w-5xl mx-auto">
-            <div className="flex justify-between items-end mb-8">
+            <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-6">
               <div>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2">Total Incidents: {filteredRecords.length}</p>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2">Total Incidents: {records.length}</p>
                 <h3 className="text-3xl font-black tracking-tighter">MISCONDUCT ARCHIVE</h3>
               </div>
-              <div className="flex gap-2">
-                <button className="p-2 border border-gray-200 rounded-lg text-gray-400 hover:text-black transition-colors">
-                  <Filter size={18} />
+              
+              <div className="flex bg-gray-100 p-1 rounded-xl">
+                <button 
+                  onClick={() => setActiveTab('all')}
+                  className={cn(
+                    "px-6 py-2 rounded-lg text-[10px] font-black tracking-widest uppercase transition-all",
+                    activeTab === 'all' ? "bg-white text-black shadow-sm" : "text-gray-400 hover:text-gray-600"
+                  )}
+                >
+                  All Records
+                </button>
+                <button 
+                  onClick={() => setActiveTab('ai')}
+                  className={cn(
+                    "px-6 py-2 rounded-lg text-[10px] font-black tracking-widest uppercase transition-all flex items-center gap-2",
+                    activeTab === 'ai' ? "bg-white text-black shadow-sm" : "text-gray-400 hover:text-gray-600"
+                  )}
+                >
+                  <Globe size={12} />
+                  AI News (Latest 10)
                 </button>
               </div>
             </div>
@@ -310,9 +413,11 @@ export const MisconductDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmb
                     )}
                   >
                     <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
                         <StatusBadge status={record.status} />
                         <TypeBadge type={record.type} />
+                        <CategoryBadge category={record.category} />
+                        <SourceBadge source={record.source} />
                       </div>
                       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{record.date}</span>
                     </div>
@@ -366,6 +471,8 @@ export const MisconductDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmb
                 <div className="mb-10">
                   <div className="flex items-center gap-2 mb-4">
                     <TypeBadge type={selectedRecord.type} />
+                    <CategoryBadge category={selectedRecord.category} />
+                    <SourceBadge source={selectedRecord.source} />
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.3em]">ID: {selectedRecord.id}</span>
                   </div>
                   <h3 className="text-3xl font-black tracking-tighter leading-tight mb-6">{selectedRecord.title}</h3>
@@ -382,6 +489,17 @@ export const MisconductDB = ({ onBack, isEmbedded }: { onBack: () => void, isEmb
                     <section>
                       <h5 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Description / 事案概要</h5>
                       <p className="text-sm text-gray-600 leading-relaxed">{selectedRecord.description}</p>
+                      {selectedRecord.url && (
+                        <a 
+                          href={selectedRecord.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="mt-4 flex items-center gap-2 text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
+                        >
+                          <ExternalLink size={14} />
+                          ソース記事を表示
+                        </a>
+                      )}
                     </section>
 
                     <section>

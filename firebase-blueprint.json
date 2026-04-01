@@ -27,16 +27,19 @@
         "title": { "type": "string", "description": "Title of the record" },
         "date": { "type": "string", "format": "date", "description": "Date of the incident" },
         "type": { "type": "string", "enum": ["corruption", "fraud", "cover-up", "harassment", "other"], "description": "Type of misconduct" },
+        "category": { "type": "string", "enum": ["administrative", "public-servant"], "description": "Category of misconduct" },
+        "source": { "type": "string", "enum": ["user", "ai-collected"], "description": "Source of the record" },
         "organization": { "type": "string", "description": "Organization involved" },
         "description": { "type": "string", "description": "Detailed description of the incident" },
         "status": { "type": "string", "enum": ["under-investigation", "disciplinary-action", "legal-action", "closed"], "description": "Current status of the record" },
         "severity": { "type": "integer", "description": "Severity level (1-5)" },
         "involvedParties": { "type": "array", "items": { "type": "string" }, "description": "Parties involved in the misconduct" },
         "penalty": { "type": "string", "description": "Penalty or action taken" },
+        "url": { "type": "string", "description": "URL of the news source" },
         "authorUid": { "type": "string", "description": "UID of the user who created the record" },
         "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of record creation" }
       },
-      "required": ["title", "date", "type", "organization", "description", "status", "severity", "authorUid", "createdAt"]
+      "required": ["title", "date", "type", "category", "source", "organization", "description", "status", "severity", "authorUid", "createdAt"]
     },
     "UserProfile": {
       "title": "User Profile",
